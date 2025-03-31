@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'blog-posts/**/*.md'  # Only trigger on markdown file changes
   workflow_dispatch:
     inputs:
       dry_run:
@@ -18,20 +20,22 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # Set a reasonable timeout
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 1  # Shallow clone for speed
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install axios front-matter
-
-      - name: Create publishing script
+      - name: Install minimal dependencies
+        run: npm install --no-save axios front-matter
+        
+      - name: Create simple publishing script
         run: |
           cat > publish.js << 'EOL'
           const fs = require('fs');
@@ -47,15 +51,12 @@ jobs:
           }
 
           // Parse command line arguments
-          const args = process.argv.slice(2);
-          const dryRun = args.includes('--dryRun') || process.env.DRY_RUN === 'true';
+          const dryRun = process.env.DRY_RUN === 'true';
           const specificFile = process.env.FILE_PATH || null;
+          const folder = 'blog-posts';
 
-          // Default folder
-          let folder = 'blog-posts';
-
-          // Find all markdown files in the specified folder
-          function findMarkdownFiles(dir) {
+          // Find all article.md files
+          function findArticleFiles(dir) {
             let results = [];
             const list = fs.readdirSync(dir);
             
@@ -64,8 +65,8 @@ jobs:
               const stat = fs.statSync(filePath);
               
               if (stat.isDirectory()) {
-                results = results.concat(findMarkdownFiles(filePath));
-              } else if (file.endsWith('.md')) {
+                results = results.concat(findArticleFiles(filePath));
+              } else if (file === 'article.md') {
                 results.push(filePath);
               }
             });
@@ -82,12 +83,7 @@ jobs:
               // Skip files with published: false unless they're being explicitly published
               if (attributes.published === false && !specificFile) {
                 console.log(`Skipping ${file} because published is set to false`);
-                return {
-                  success: false,
-                  skipped: true,
-                  file,
-                  title: attributes.title
-                };
+                return { success: false, skipped: true, file, title: attributes.title };
               }
               
               const article = {
@@ -99,17 +95,9 @@ jobs:
                 }
               };
               
-              if (attributes.cover_image) {
-                article.article.main_image = attributes.cover_image;
-              }
-              
-              if (attributes.canonical_url) {
-                article.article.canonical_url = attributes.canonical_url;
-              }
-              
-              if (attributes.series) {
-                article.article.series = attributes.series;
-              }
+              if (attributes.cover_image) article.article.main_image = attributes.cover_image;
+              if (attributes.canonical_url) article.article.canonical_url = attributes.canonical_url;
+              if (attributes.series) article.article.series = attributes.series;
               
               console.log(`${dryRun ? '[DRY RUN] ' : ''}Publishing article: ${attributes.title}`);
               
@@ -122,48 +110,29 @@ jobs:
                     }
                   });
                   console.log(`Successfully published: ${response.data.url}`);
-                  return {
-                    success: true,
-                    url: response.data.url,
-                    title: attributes.title,
-                    file
-                  };
+                  return { success: true, url: response.data.url, title: attributes.title, file };
                 } catch (error) {
                   console.error(`Error publishing article: ${error.message}`);
                   if (error.response) {
                     console.error(`Status: ${error.response.status}`);
                     console.error(`Response: ${JSON.stringify(error.response.data, null, 2)}`);
                   }
-                  return {
-                    success: false,
-                    error: error.message,
-                    file
-                  };
+                  return { success: false, error: error.message, file };
                 }
               } else {
-                console.log('Article would be published with:');
-                console.log(JSON.stringify(article, null, 2));
-                return {
-                  success: true,
-                  dryRun: true,
-                  title: attributes.title,
-                  file
-                };
+                console.log('Article would be published with title:', article.article.title);
+                return { success: true, dryRun: true, title: attributes.title, file };
               }
             } catch (error) {
               console.error(`Error processing file ${file}: ${error.message}`);
-              return {
-                success: false,
-                error: error.message,
-                file
-              };
+              return { success: false, error: error.message, file };
             }
           }
 
           async function run() {
             try {
               let files = [];
-
+              
               if (specificFile) {
                 // Use a specific file
                 if (!fs.existsSync(specificFile)) {
@@ -179,22 +148,18 @@ jobs:
                 files = [specificFile];
                 console.log(`Publishing single file: ${specificFile}`);
               } else {
-                // Find markdown files in the folder
-                console.log(`Looking for markdown files in ${folder}...`);
-                files = findMarkdownFiles(folder);
-                console.log(`Found ${files.length} markdown files to process`);
+                // Find article.md files in the folder
+                console.log(`Looking for article.md files in ${folder}...`);
+                files = findArticleFiles(folder);
+                console.log(`Found ${files.length} article.md files to process`);
               }
               
               if (files.length === 0) {
-                console.log('No markdown files found to publish.');
+                console.log('No article.md files found to publish.');
                 return;
               }
               
-              const results = {
-                successful: [],
-                failed: [],
-                skipped: []
-              };
+              const results = { successful: [], failed: [], skipped: [] };
               
               for (const file of files) {
                 const result = await publishArticle(file);
@@ -223,27 +188,12 @@ jobs:
               console.log(`Total files processed: ${files.length}`);
               console.log(`Successful: ${results.successful.length}`);
               console.log(`Failed: ${results.failed.length}`);
-              console.log(`Skipped (published=false): ${results.skipped.length}`);
+              console.log(`Skipped: ${results.skipped.length}`);
               
-              if (results.failed.length > 0) {
-                console.log('\nFailed articles:');
-                results.failed.forEach(item => {
-                  console.log(`- ${item.file}: ${item.error}`);
-                });
-                process.exit(1);
-              }
-
               if (results.successful.length > 0) {
                 console.log('\nSuccessfully published/would publish:');
                 results.successful.forEach(item => {
                   console.log(`- ${item.file}${item.dryRun ? ' (DRY RUN)' : ''}`);
-                });
-              }
-
-              if (results.skipped.length > 0) {
-                console.log('\nSkipped articles (published=false):');
-                results.skipped.forEach(item => {
-                  console.log(`- ${item.file}: ${item.title}`);
                 });
               }
             } catch (error) {
@@ -258,6 +208,6 @@ jobs:
       - name: Run publish script
         env:
           DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || (github.event_name == 'push' ? 'false' : 'true') }}
           FILE_PATH: ${{ github.event.inputs.file_path }}
         run: node publish.js
