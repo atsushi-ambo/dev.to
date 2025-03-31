@@ -136,12 +136,12 @@ jobs:
               }
               
               // Find all image references in markdown content
-              const imageRegex = /!\[(.*?)\]\((\.\/assets\/[^)]+)\)/g;
+              const imageRegex = /!\[(.*?)\]\((\.\/assets\/[^)]+|assets\/[^)]+)\)/g;
               let match;
               const imagePaths = [];
               
               while ((match = imageRegex.exec(content)) !== null) {
-                const imagePath = match[2].replace('./assets/', '');
+                const imagePath = match[2].replace('./assets/', '').replace('assets/', '');
                 const fullImagePath = path.join(articleDir, 'assets', imagePath);
                 if (fs.existsSync(fullImagePath)) {
                   imagePaths.push({

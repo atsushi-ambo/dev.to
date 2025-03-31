@@ -42,6 +42,25 @@ canonical_url: https://your-blog.com/original-post  # Optional
 ---
 ```
 
+## Image References
+
+There are two supported formats for referencing images in your articles:
+
+```markdown
+![Image description](assets/image_name.png)
+```
+
+or
+
+```markdown
+![Image description](./assets/image_name.png)
+```
+
+When your article is published, the GitHub Actions workflow will:
+1. Find all image references in your Markdown file
+2. Upload the images to dev.to's CDN
+3. Replace the references with the CDN URLs in the published article
+
 ## Setting Up the GitHub Integration
 
 1. Get your DEV.TO API key from [dev.to/settings/extensions](https://dev.to/settings/extensions)
