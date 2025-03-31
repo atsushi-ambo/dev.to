@@ -74,6 +74,23 @@ jobs:
             return results;
           }
 
+          // Process markdown content - fix image paths if needed
+          function processMarkdown(content, filePath) {
+            // Process local image references in markdown content
+            const articleDir = path.dirname(filePath);
+            
+            // Replace relative image paths with absolute file paths
+            // Dev.to API will automatically upload these images
+            let processedContent = content.replace(
+              /!\[(.*?)\]\(\.\/assets\/(.*?)\)/g, 
+              (match, alt, imagePath) => {
+                return `![${alt}](${path.join(articleDir, 'assets', imagePath)})`;
+              }
+            );
+            
+            return processedContent;
+          }
+
           async function publishArticle(file) {
             try {
               console.log(`Processing file: ${file}`);
@@ -86,20 +103,41 @@ jobs:
                 return { success: false, skipped: true, file, title: attributes.title };
               }
               
+              // Process markdown content to fix image paths
+              const processedContent = processMarkdown(content, file);
+              
+              // Check tag count and limit to 4 if needed
+              let tags = attributes.tags ? attributes.tags.split(',').map(tag => tag.trim()) : [];
+              if (tags.length > 4) {
+                console.log(`Warning: Limiting tags to 4 (was ${tags.length})`);
+                tags = tags.slice(0, 4);
+              }
+              
               const article = {
                 article: {
                   title: attributes.title,
                   published: attributes.published !== false,
-                  body_markdown: content,
-                  tags: attributes.tags ? attributes.tags.split(',').map(tag => tag.trim()) : [],
+                  body_markdown: processedContent,
+                  tags: tags,
                 }
               };
               
-              if (attributes.cover_image) article.article.main_image = attributes.cover_image;
+              if (attributes.cover_image) {
+                // If cover image is a local path, convert to absolute path
+                if (attributes.cover_image.startsWith('./assets/')) {
+                  const articleDir = path.dirname(file);
+                  const imagePath = attributes.cover_image.replace('./assets/', '');
+                  article.article.main_image = path.join(articleDir, 'assets', imagePath);
+                } else {
+                  article.article.main_image = attributes.cover_image;
+                }
+              }
+              
               if (attributes.canonical_url) article.article.canonical_url = attributes.canonical_url;
               if (attributes.series) article.article.series = attributes.series;
               
               console.log(`${dryRun ? '[DRY RUN] ' : ''}Publishing article: ${attributes.title}`);
+              console.log(`Tags: ${tags.join(', ')}`);
               
               if (!dryRun) {
                 try {
@@ -184,14 +222,14 @@ jobs:
               }
               
               // Print summary
-              console.log('\\n======= PUBLISHING SUMMARY =======');
+              console.log('\n======= PUBLISHING SUMMARY =======');
               console.log(`Total files processed: ${files.length}`);
               console.log(`Successful: ${results.successful.length}`);
               console.log(`Failed: ${results.failed.length}`);
               console.log(`Skipped: ${results.skipped.length}`);
               
               if (results.successful.length > 0) {
-                console.log('\\nSuccessfully published/would publish:');
+                console.log('\nSuccessfully published/would publish:');
                 results.successful.forEach(item => {
                   console.log(`- ${item.file}${item.dryRun ? ' (DRY RUN)' : ''}`);
                 });

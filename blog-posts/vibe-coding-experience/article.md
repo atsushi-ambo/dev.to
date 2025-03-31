@@ -2,8 +2,7 @@
 title: "I Took a Popular Vibe Coding Course and Built a Sample App"
 published: true
 description: "My experience with Vibe Coding - a new approach to collaborative programming with AI agents that focuses on design while letting AI handle implementation details."
-tags: ai, programming, replit, vibecoding, webdevelopment
-cover_image: "./assets/cover.jpg"
+tags: ai, programming, webdevelopment, replit
 ---
 
 # Experiencing Vibe Coding - Building Web Apps with AI Agents
