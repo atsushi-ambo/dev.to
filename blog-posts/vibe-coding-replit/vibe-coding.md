@@ -1,6 +1,6 @@
 ---
 title: "Coding with Vibe: Building Web Apps on Replit"
-published: false
+published: true
 description: "Discover how Vibe coding on Replit makes web development more accessible, collaborative, and enjoyable for developers of all skill levels."
 tags: webdev, beginners, productivity, tutorial
 cover_image: https://dev-to-uploads.s3.amazonaws.com/uploads/articles/coding_vibe.jpg
