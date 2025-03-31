@@ -67,23 +67,6 @@ When your article is published, the GitHub Actions workflow will:
 2. Add this key as a repository secret named `DEVTO_API_KEY` in your GitHub repository settings
 3. When you push changes to the main branch, the GitHub Action will publish your articles
 
-## Creating Branches and PRs
-
-If you're having issues creating branches and PRs manually, you can use the automated workflow:
-
-1. Go to the "Actions" tab in your GitHub repository
-2. Select the "Create PR from Branch" workflow
-3. Click "Run workflow" dropdown
-4. Enter your desired branch name, commit message, PR title, and description
-5. Click "Run workflow" button
-
-This workflow will:
-- Create a new branch (or use an existing one)
-- Add a sample commit to ensure the branch has content
-- Create a PR from that branch to main
-
-After the PR is created, you can add your article files to the branch using GitHub's web interface or by checking out the branch locally.
-
 ## Deploying with GitHub Actions
 
 You can manually trigger the GitHub Actions workflow to publish your articles:
