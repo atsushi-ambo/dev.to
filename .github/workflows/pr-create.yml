@@ -1,0 +1,61 @@
+name: Create PR from Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: 'Name of the branch to create/use'
+        required: true
+        default: 'new-article'
+      commit_message:
+        description: 'Commit message'
+        required: true
+        default: 'Add new article'
+      pr_title:
+        description: 'PR title'
+        required: true
+        default: 'New article submission'
+      pr_body:
+        description: 'PR description'
+        required: false
+        default: 'This PR adds a new article'
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Create branch if it doesn't exist
+        run: |
+          git fetch origin
+          if git show-ref --verify --quiet refs/remotes/origin/${{ github.event.inputs.branch_name }}; then
+            echo "Branch ${{ github.event.inputs.branch_name }} already exists. Checking out..."
+            git checkout ${{ github.event.inputs.branch_name }}
+          else
+            echo "Creating new branch ${{ github.event.inputs.branch_name }}..."
+            git checkout -b ${{ github.event.inputs.branch_name }}
+          fi
+
+      - name: Create sample file change
+        run: |
+          # Make a change to ensure the branch has at least one commit
+          echo "# Branch created at $(date)" >> branch-info.md
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add branch-info.md
+          git commit -m "${{ github.event.inputs.commit_message }}"
+          git push -u origin ${{ github.event.inputs.branch_name }}
+
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          branch: ${{ github.event.inputs.branch_name }}
+          title: ${{ github.event.inputs.pr_title }}
+          body: ${{ github.event.inputs.pr_body }}
+          draft: false
