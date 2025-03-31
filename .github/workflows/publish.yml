@@ -1,111 +1,263 @@
-name: Publish to dev.to
+name: Publish to DEV.TO
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no actual publishing)'
+        type: boolean
+        default: true
+      file_path:
+        description: 'Specific file to publish (leave empty for all)'
+        required: false
+        type: string
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      
-      - name: Setup Node.js
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
-          
+          node-version: '16'
+          cache: 'npm'
+
       - name: Install dependencies
         run: npm install axios front-matter
 
-      - name: Get changed files
-        id: changed-files
+      - name: Create publishing script
         run: |
-          if [ "${{ github.event_name }}" == "push" ] || [ "${{ github.event_name }}" == "pull_request" ]; then
-            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} | grep -E '^blog-posts/.*\.md$' || true)
-          else
-            CHANGED_FILES=$(find blog-posts -type f -name "*.md")
-          fi
-          echo "files=$CHANGED_FILES" >> $GITHUB_OUTPUT
-          
-      - name: Publish articles
-        if: steps.changed-files.outputs.files != ''
-        env:
-          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
-        run: |
-          cat > publish.js << 'EOF'
+          cat > publish.js << 'EOL'
           const fs = require('fs');
           const path = require('path');
           const axios = require('axios');
           const fm = require('front-matter');
-          
+
+          // Check if API key is provided
           const apiKey = process.env.DEVTO_API_KEY;
-          const dryRun = process.argv.includes('--dryRun');
-          
-          const files = process.argv[2].split(' ').filter(f => f);
-          
-          async function publishArticle(file) {
-            const content = fs.readFileSync(file, 'utf8');
-            const { attributes, body } = fm(content);
+          if (!apiKey) {
+            console.error('Error: DEVTO_API_KEY environment variable is required');
+            process.exit(1);
+          }
+
+          // Parse command line arguments
+          const args = process.argv.slice(2);
+          const dryRun = args.includes('--dryRun') || process.env.DRY_RUN === 'true';
+          const specificFile = process.env.FILE_PATH || null;
+
+          // Default folder
+          let folder = 'blog-posts';
+
+          // Find all markdown files in the specified folder
+          function findMarkdownFiles(dir) {
+            let results = [];
+            const list = fs.readdirSync(dir);
             
-            const article = {
-              article: {
-                title: attributes.title,
-                published: attributes.published,
-                body_markdown: content,
-                tags: attributes.tags ? attributes.tags.split(',').map(tag => tag.trim()) : [],
+            list.forEach(file => {
+              const filePath = path.join(dir, file);
+              const stat = fs.statSync(filePath);
+              
+              if (stat.isDirectory()) {
+                results = results.concat(findMarkdownFiles(filePath));
+              } else if (file.endsWith('.md')) {
+                results.push(filePath);
               }
-            };
+            });
             
-            if (attributes.cover_image) {
-              article.article.main_image = attributes.cover_image;
-            }
-            
-            if (attributes.canonical_url) {
-              article.article.canonical_url = attributes.canonical_url;
-            }
-            
-            if (attributes.series) {
-              article.article.series = attributes.series;
-            }
-            
-            console.log(`${dryRun ? '[DRY RUN] ' : ''}Publishing article: ${attributes.title}`);
-            
-            if (!dryRun) {
-              try {
-                const response = await axios.post('https://dev.to/api/articles', article, {
-                  headers: {
-                    'api-key': apiKey,
-                    'Content-Type': 'application/json'
+            return results;
+          }
+
+          async function publishArticle(file) {
+            try {
+              console.log(`Processing file: ${file}`);
+              const content = fs.readFileSync(file, 'utf8');
+              const { attributes, body } = fm(content);
+              
+              // Skip files with published: false unless they're being explicitly published
+              if (attributes.published === false && !specificFile) {
+                console.log(`Skipping ${file} because published is set to false`);
+                return {
+                  success: false,
+                  skipped: true,
+                  file,
+                  title: attributes.title
+                };
+              }
+              
+              const article = {
+                article: {
+                  title: attributes.title,
+                  published: attributes.published !== false,
+                  body_markdown: content,
+                  tags: attributes.tags ? attributes.tags.split(',').map(tag => tag.trim()) : [],
+                }
+              };
+              
+              if (attributes.cover_image) {
+                article.article.main_image = attributes.cover_image;
+              }
+              
+              if (attributes.canonical_url) {
+                article.article.canonical_url = attributes.canonical_url;
+              }
+              
+              if (attributes.series) {
+                article.article.series = attributes.series;
+              }
+              
+              console.log(`${dryRun ? '[DRY RUN] ' : ''}Publishing article: ${attributes.title}`);
+              
+              if (!dryRun) {
+                try {
+                  const response = await axios.post('https://dev.to/api/articles', article, {
+                    headers: {
+                      'api-key': apiKey,
+                      'Content-Type': 'application/json'
+                    }
+                  });
+                  console.log(`Successfully published: ${response.data.url}`);
+                  return {
+                    success: true,
+                    url: response.data.url,
+                    title: attributes.title,
+                    file
+                  };
+                } catch (error) {
+                  console.error(`Error publishing article: ${error.message}`);
+                  if (error.response) {
+                    console.error(`Status: ${error.response.status}`);
+                    console.error(`Response: ${JSON.stringify(error.response.data, null, 2)}`);
                   }
-                });
-                console.log(`Successfully published: ${response.data.url}`);
-              } catch (error) {
-                console.error(`Error publishing article: ${error.message}`);
-                if (error.response) {
-                  console.error(`Status: ${error.response.status}`);
-                  console.error(`Response: ${JSON.stringify(error.response.data, null, 2)}`);
+                  return {
+                    success: false,
+                    error: error.message,
+                    file
+                  };
+                }
+              } else {
+                console.log('Article would be published with:');
+                console.log(JSON.stringify(article, null, 2));
+                return {
+                  success: true,
+                  dryRun: true,
+                  title: attributes.title,
+                  file
+                };
+              }
+            } catch (error) {
+              console.error(`Error processing file ${file}: ${error.message}`);
+              return {
+                success: false,
+                error: error.message,
+                file
+              };
+            }
+          }
+
+          async function run() {
+            try {
+              let files = [];
+
+              if (specificFile) {
+                // Use a specific file
+                if (!fs.existsSync(specificFile)) {
+                  console.error(`Error: File ${specificFile} does not exist`);
+                  process.exit(1);
+                }
+                
+                if (!specificFile.endsWith('.md')) {
+                  console.error('Error: Only markdown (.md) files are supported');
+                  process.exit(1);
+                }
+                
+                files = [specificFile];
+                console.log(`Publishing single file: ${specificFile}`);
+              } else {
+                // Find markdown files in the folder
+                console.log(`Looking for markdown files in ${folder}...`);
+                files = findMarkdownFiles(folder);
+                console.log(`Found ${files.length} markdown files to process`);
+              }
+              
+              if (files.length === 0) {
+                console.log('No markdown files found to publish.');
+                return;
+              }
+              
+              const results = {
+                successful: [],
+                failed: [],
+                skipped: []
+              };
+              
+              for (const file of files) {
+                const result = await publishArticle(file);
+                if (result.success) {
+                  results.successful.push({
+                    file: result.file,
+                    title: result.title,
+                    url: result.url,
+                    dryRun: !!result.dryRun
+                  });
+                } else if (result.skipped) {
+                  results.skipped.push({
+                    file: result.file,
+                    title: result.title
+                  });
+                } else {
+                  results.failed.push({
+                    file: result.file,
+                    error: result.error
+                  });
                 }
               }
-            } else {
-              console.log('Article would be published with:');
-              console.log(JSON.stringify(article, null, 2));
+              
+              // Print summary
+              console.log('\n======= PUBLISHING SUMMARY =======');
+              console.log(`Total files processed: ${files.length}`);
+              console.log(`Successful: ${results.successful.length}`);
+              console.log(`Failed: ${results.failed.length}`);
+              console.log(`Skipped (published=false): ${results.skipped.length}`);
+              
+              if (results.failed.length > 0) {
+                console.log('\nFailed articles:');
+                results.failed.forEach(item => {
+                  console.log(`- ${item.file}: ${item.error}`);
+                });
+                process.exit(1);
+              }
+
+              if (results.successful.length > 0) {
+                console.log('\nSuccessfully published/would publish:');
+                results.successful.forEach(item => {
+                  console.log(`- ${item.file}${item.dryRun ? ' (DRY RUN)' : ''}`);
+                });
+              }
+
+              if (results.skipped.length > 0) {
+                console.log('\nSkipped articles (published=false):');
+                results.skipped.forEach(item => {
+                  console.log(`- ${item.file}: ${item.title}`);
+                });
+              }
+            } catch (error) {
+              console.error(`Error: ${error.message}`);
+              process.exit(1);
             }
           }
-          
-          async function run() {
-            console.log(`Found ${files.length} markdown files to publish`);
-            for (const file of files) {
-              await publishArticle(file);
-            }
-          }
-          
-          run().catch(console.error);
-          EOF
-          
-          node publish.js "${{ steps.changed-files.outputs.files }}" ${{ github.event_name == 'workflow_dispatch' && '--dryRun' || '' }}
+
+          run();
+          EOL
+
+      - name: Run publish script
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          FILE_PATH: ${{ github.event.inputs.file_path }}
+        run: node publish.js
