@@ -1,9 +1,9 @@
 ---
 title: "I Took a Popular Vibe Coding Course and Built a Sample App"
-published: true
+published: false
 description: "My experience with Vibe Coding - a new approach to collaborative programming with AI agents that focuses on design while letting AI handle implementation details."
 tags: ai, programming, replit, vibecoding, webdevelopment
-cover_image: https://dev-to-uploads.s3.amazonaws.com/uploads/articles/coding_vibe.jpg
+cover_image: "./assets/cover.jpg"
 ---
 
 # Experiencing Vibe Coding - Building Web Apps with AI Agents
@@ -14,7 +14,7 @@ Hello, I'm Atsushi from the SRE team at GMO Media. In this article, I'd like to 
 
 "Vibe Coding" is a new coding style where you delegate most of the coding work to AI agents while focusing on application architecture and feature design. It's not just about throwing a prompt at an AI and accepting all its suggestions; it involves structuring your work, refining prompts, and using frameworks that lead to more efficient code.
 
-![Vibe Coding concept explanation slide](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/vibe_concept.png)
+![Vibe Coding concept explanation slide](./assets/vibe_concept.png)
 
 ## Course Overview
 
@@ -78,7 +78,7 @@ The app should fetch the HTML for a site, then provide feedback on SEO tags in a
 The app should give google and Social media previews.
 ```
 
-![SEO Analyzer app screenshot](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/seo_analyzer.png)
+![SEO Analyzer app screenshot](./assets/seo_analyzer.png)
 
 The completed app retrieves meta tags from the entered URL and visually displays previews for Google search results and social media. It also checks important SEO points and suggests improvements if needed.
 
@@ -88,7 +88,7 @@ Since it wasn't responsive for smartphones, I conveyed the following prompt to h
 make my app fully responsive and mobile friendly
 ```
 
-![SEO Analyzer responsive design](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/seo_responsive.png)
+![SEO Analyzer responsive design](./assets/seo_responsive.png)
 
 This process of starting with simple prompts and adding/improving features through dialogue with the AI agent is the essence of Vibe Coding.
 
@@ -102,7 +102,7 @@ The course introduced five skills for effective "Vibe Coding":
 4. **Debugging**
 5. **Providing Context**
 
-![Vibe Coding's five-skill framework](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/vibe_skills.png)
+![Vibe Coding's five-skill framework](./assets/vibe_skills.png)
 
 ## Why I Recommend This Course
 
@@ -128,7 +128,7 @@ The ability to effectively instruct AI has become an extremely important skill f
 
 While taking the course, I created an SEO analyzer following the instructions. I started with a simple UI implementing only basic functions and gradually added features.
 
-![Replit screen during the course](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/replit_screen.png)
+![Replit screen during the course](./assets/replit_screen.png)
 
 I was particularly impressed with the debugging process when errors occurred. When I communicated error messages and code status to the AI, it quickly suggested the causes and solutions. I felt this was a much more understandable approach for beginners compared to traditional debugging methods.
 
