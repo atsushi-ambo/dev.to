@@ -184,14 +184,14 @@ jobs:
               }
               
               // Print summary
-              console.log('\n======= PUBLISHING SUMMARY =======');
+              console.log('\\n======= PUBLISHING SUMMARY =======');
               console.log(`Total files processed: ${files.length}`);
               console.log(`Successful: ${results.successful.length}`);
               console.log(`Failed: ${results.failed.length}`);
               console.log(`Skipped: ${results.skipped.length}`);
               
               if (results.successful.length > 0) {
-                console.log('\nSuccessfully published/would publish:');
+                console.log('\\nSuccessfully published/would publish:');
                 results.successful.forEach(item => {
                   console.log(`- ${item.file}${item.dryRun ? ' (DRY RUN)' : ''}`);
                 });
@@ -208,6 +208,6 @@ jobs:
       - name: Run publish script
         env:
           DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
-          DRY_RUN: ${{ github.event.inputs.dry_run || (github.event_name == 'push' ? 'false' : 'true') }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           FILE_PATH: ${{ github.event.inputs.file_path }}
         run: node publish.js
