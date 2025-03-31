@@ -16,7 +16,19 @@ if (!apiKey) {
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dryRun');
 const folderArg = args.indexOf('--folder');
-const folder = folderArg !== -1 && args.length > folderArg + 1 ? args[folderArg + 1] : 'blog-posts';
+const fileArg = args.indexOf('--file');
+
+// Get the folder or file path
+let folder = 'blog-posts';
+let specificFile = null;
+
+if (folderArg !== -1 && args.length > folderArg + 1) {
+  folder = args[folderArg + 1];
+}
+
+if (fileArg !== -1 && args.length > fileArg + 1) {
+  specificFile = args[fileArg + 1];
+}
 
 // Find all markdown files in the specified folder
 function findMarkdownFiles(dir) {
@@ -74,30 +86,103 @@ async function publishArticle(file) {
           }
         });
         console.log(`Successfully published: ${response.data.url}`);
+        return {
+          success: true,
+          url: response.data.url,
+          title: attributes.title
+        };
       } catch (error) {
         console.error(`Error publishing article: ${error.message}`);
         if (error.response) {
           console.error(`Status: ${error.response.status}`);
           console.error(`Response: ${JSON.stringify(error.response.data, null, 2)}`);
         }
+        return {
+          success: false,
+          error: error.message
+        };
       }
     } else {
       console.log('Article would be published with:');
       console.log(JSON.stringify(article, null, 2));
+      return {
+        success: true,
+        dryRun: true,
+        title: attributes.title
+      };
     }
   } catch (error) {
     console.error(`Error processing file ${file}: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 
 async function run() {
   try {
-    console.log(`Looking for markdown files in ${folder}...`);
-    const files = findMarkdownFiles(folder);
-    console.log(`Found ${files.length} markdown files to process`);
+    let files = [];
+
+    if (specificFile) {
+      // Use a specific file
+      if (!fs.existsSync(specificFile)) {
+        console.error(`Error: File ${specificFile} does not exist`);
+        process.exit(1);
+      }
+      
+      if (!specificFile.endsWith('.md')) {
+        console.error('Error: Only markdown (.md) files are supported');
+        process.exit(1);
+      }
+      
+      files = [specificFile];
+      console.log(`Publishing single file: ${specificFile}`);
+    } else {
+      // Find markdown files in the folder
+      console.log(`Looking for markdown files in ${folder}...`);
+      files = findMarkdownFiles(folder);
+      console.log(`Found ${files.length} markdown files to process`);
+    }
+    
+    if (files.length === 0) {
+      console.log('No markdown files found to publish.');
+      return;
+    }
+    
+    const results = {
+      successful: [],
+      failed: []
+    };
     
     for (const file of files) {
-      await publishArticle(file);
+      const result = await publishArticle(file);
+      if (result.success) {
+        results.successful.push({
+          file,
+          title: result.title,
+          url: result.url,
+          dryRun: !!result.dryRun
+        });
+      } else {
+        results.failed.push({
+          file,
+          error: result.error
+        });
+      }
+    }
+    
+    // Print summary
+    console.log('\n======= PUBLISHING SUMMARY =======');
+    console.log(`Total files processed: ${files.length}`);
+    console.log(`Successful: ${results.successful.length}`);
+    console.log(`Failed: ${results.failed.length}`);
+    
+    if (results.failed.length > 0) {
+      console.log('\nFailed articles:');
+      results.failed.forEach(item => {
+        console.log(`- ${item.file}: ${item.error}`);
+      });
     }
   } catch (error) {
     console.error(`Error: ${error.message}`);

@@ -1,14 +1,17 @@
 {
-  "name": "dev-to-publisher",
+  "name": "dev-to-articles",
   "version": "1.0.0",
-  "description": "Tool for publishing articles to dev.to",
+  "description": "Repository for dev.to articles",
   "main": "publish-to-devto.js",
   "scripts": {
     "publish": "node publish-to-devto.js",
-    "publish:dry": "node publish-to-devto.js --dryRun"
+    "publish:dry": "node publish-to-devto.js --dryRun",
+    "publish:single": "node publish-to-devto.js --file",
+    "publish:folder": "node publish-to-devto.js --folder"
   },
   "dependencies": {
-    "axios": "^1.6.2",
+    "axios": "^1.6.0",
     "front-matter": "^4.0.2"
-  }
+  },
+  "license": "MIT"
 }

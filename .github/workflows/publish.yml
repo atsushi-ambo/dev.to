@@ -36,7 +36,7 @@ jobs:
       - name: Publish articles
         if: steps.changed-files.outputs.files != ''
         env:
-          DEVTO_API_KEY: ${{ secrets.DEV_TO_KEY }}
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
         run: |
           cat > publish.js << 'EOF'
           const fs = require('fs');

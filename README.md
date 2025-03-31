@@ -48,6 +48,19 @@ canonical_url: https://your-blog.com/original-post  # Optional
 2. Add this key as a repository secret named `DEVTO_API_KEY` in your GitHub repository settings
 3. When you push changes to the main branch, the GitHub Action will publish your articles
 
+## Deploying with GitHub Actions
+
+You can manually trigger the GitHub Actions workflow to publish your articles:
+
+1. Go to the "Actions" tab in your GitHub repository
+2. Select the "Publish to dev.to" workflow
+3. Click "Run workflow" dropdown
+4. Select the branch containing your articles (usually "main")
+5. Click "Run workflow" button
+
+This will run the workflow in dry-run mode, showing what would be published without actually publishing.
+To publish for real, you need to push your changes to the main branch.
+
 ## Local Testing
 
 To test this workflow locally:
