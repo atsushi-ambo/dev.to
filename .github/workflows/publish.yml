@@ -34,14 +34,17 @@ jobs:
 
       - name: Install minimal dependencies
         run: npm install --no-save axios front-matter
-        
-      - name: Create simple publishing script
+
+      - name: Create uploading script
         run: |
           cat > publish.js << 'EOL'
           const fs = require('fs');
           const path = require('path');
           const axios = require('axios');
           const fm = require('front-matter');
+          const { exec } = require('child_process');
+          const { promisify } = require('util');
+          const execAsync = promisify(exec);
 
           // Check if API key is provided
           const apiKey = process.env.DEVTO_API_KEY;
@@ -74,28 +77,115 @@ jobs:
             return results;
           }
 
-          // Process markdown content - fix image paths if needed
+          // Process markdown content to use regular URLs for images
           function processMarkdown(content, filePath) {
-            // Process local image references in markdown content
-            const articleDir = path.dirname(filePath);
-            
-            // Replace relative image paths with absolute file paths
-            // Dev.to API will automatically upload these images
-            let processedContent = content.replace(
-              /!\[(.*?)\]\(\.\/assets\/(.*?)\)/g, 
-              (match, alt, imagePath) => {
-                return `![${alt}](${path.join(articleDir, 'assets', imagePath)})`;
+            // For local article, we'll embed the images directly
+            // Return as is for now - we'll replace image references after uploading
+            return content;
+          }
+
+          // Function to upload a single image using curl to the DEV.TO API
+          async function uploadImageToDev(imagePath) {
+            try {
+              console.log(`Uploading image: ${imagePath}`);
+              if (dryRun) {
+                return {
+                  success: true,
+                  url: `https://example.com/${path.basename(imagePath)}`,
+                  dryRun: true
+                };
               }
-            );
-            
-            return processedContent;
+
+              // Use curl to upload the image
+              const cmd = `curl -X POST --location "https://dev.to/api/images" \
+                            -H "Content-Type: multipart/form-data" \
+                            -H "api-key: ${apiKey}" \
+                            -F "image=@${imagePath}"`;
+              
+              const { stdout, stderr } = await execAsync(cmd);
+              if (stderr && !stdout) {
+                throw new Error(`Failed to upload image: ${stderr}`);
+              }
+
+              const response = JSON.parse(stdout);
+              return {
+                success: true,
+                url: response.image[0] // The URL of the uploaded image
+              };
+            } catch (error) {
+              console.error(`Error uploading image ${imagePath}: ${error.message}`);
+              return {
+                success: false,
+                error: error.message
+              };
+            }
+          }
+
+          // Find and upload all images referenced in an article
+          async function uploadImagesForArticle(file) {
+            try {
+              console.log(`Looking for images for article: ${file}`);
+              const content = fs.readFileSync(file, 'utf8');
+              const articleDir = path.dirname(file);
+              const assetsDir = path.join(articleDir, 'assets');
+              
+              // Skip if no assets directory
+              if (!fs.existsSync(assetsDir)) {
+                console.log(`No assets directory found for ${file}, skipping image uploads`);
+                return { content, imageMap: {} };
+              }
+              
+              // Find all image references in markdown content
+              const imageRegex = /!\[(.*?)\]\((\.\/assets\/[^)]+)\)/g;
+              let match;
+              const imagePaths = [];
+              
+              while ((match = imageRegex.exec(content)) !== null) {
+                const imagePath = match[2].replace('./assets/', '');
+                const fullImagePath = path.join(articleDir, 'assets', imagePath);
+                if (fs.existsSync(fullImagePath)) {
+                  imagePaths.push({
+                    reference: match[2],
+                    path: fullImagePath
+                  });
+                }
+              }
+              
+              console.log(`Found ${imagePaths.length} images to upload`);
+              
+              // Upload each image
+              const imageMap = {};
+              for (const img of imagePaths) {
+                const result = await uploadImageToDev(img.path);
+                if (result.success) {
+                  imageMap[img.reference] = result.url;
+                  console.log(`Uploaded ${img.path} → ${result.url}${result.dryRun ? ' (DRY RUN)' : ''}`);
+                } else {
+                  console.error(`Failed to upload ${img.path}: ${result.error}`);
+                }
+              }
+              
+              // Replace image references in content
+              let updatedContent = content;
+              for (const [reference, url] of Object.entries(imageMap)) {
+                updatedContent = updatedContent.replace(
+                  new RegExp(`!\\[(.*?)\\]\\(${reference.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)`, 'g'),
+                  `![$1](${url})`
+                );
+              }
+              
+              return { content: updatedContent, imageMap };
+            } catch (error) {
+              console.error(`Error processing images for article ${file}: ${error.message}`);
+              return { content: fs.readFileSync(file, 'utf8'), imageMap: {} };
+            }
           }
 
           async function publishArticle(file) {
             try {
               console.log(`Processing file: ${file}`);
-              const content = fs.readFileSync(file, 'utf8');
-              const { attributes, body } = fm(content);
+              const rawContent = fs.readFileSync(file, 'utf8');
+              const { attributes } = fm(rawContent);
               
               // Skip files with published: false unless they're being explicitly published
               if (attributes.published === false && !specificFile) {
@@ -103,11 +193,15 @@ jobs:
                 return { success: false, skipped: true, file, title: attributes.title };
               }
               
-              // Process markdown content to fix image paths
-              const processedContent = processMarkdown(content, file);
+              // Upload images and get updated content
+              console.log(`Uploading images for ${file}...`);
+              const { content: updatedContent, imageMap } = await uploadImagesForArticle(file);
+              
+              // Extract front matter from updated content
+              const { attributes: updatedAttributes, body } = fm(updatedContent);
               
               // Check tag count and limit to 4 if needed
-              let tags = attributes.tags ? attributes.tags.split(',').map(tag => tag.trim()) : [];
+              let tags = updatedAttributes.tags ? updatedAttributes.tags.split(',').map(tag => tag.trim()) : [];
               if (tags.length > 4) {
                 console.log(`Warning: Limiting tags to 4 (was ${tags.length})`);
                 tags = tags.slice(0, 4);
@@ -115,28 +209,21 @@ jobs:
               
               const article = {
                 article: {
-                  title: attributes.title,
-                  published: attributes.published !== false,
-                  body_markdown: processedContent,
+                  title: updatedAttributes.title,
+                  published: updatedAttributes.published !== false,
+                  body_markdown: updatedContent,
                   tags: tags,
                 }
               };
               
-              if (attributes.cover_image) {
-                // If cover image is a local path, convert to absolute path
-                if (attributes.cover_image.startsWith('./assets/')) {
-                  const articleDir = path.dirname(file);
-                  const imagePath = attributes.cover_image.replace('./assets/', '');
-                  article.article.main_image = path.join(articleDir, 'assets', imagePath);
-                } else {
-                  article.article.main_image = attributes.cover_image;
-                }
+              if (updatedAttributes.cover_image && !updatedAttributes.cover_image.startsWith('./assets/')) {
+                article.article.main_image = updatedAttributes.cover_image;
               }
               
-              if (attributes.canonical_url) article.article.canonical_url = attributes.canonical_url;
-              if (attributes.series) article.article.series = attributes.series;
+              if (updatedAttributes.canonical_url) article.article.canonical_url = updatedAttributes.canonical_url;
+              if (updatedAttributes.series) article.article.series = updatedAttributes.series;
               
-              console.log(`${dryRun ? '[DRY RUN] ' : ''}Publishing article: ${attributes.title}`);
+              console.log(`${dryRun ? '[DRY RUN] ' : ''}Publishing article: ${updatedAttributes.title}`);
               console.log(`Tags: ${tags.join(', ')}`);
               
               if (!dryRun) {
@@ -148,7 +235,7 @@ jobs:
                     }
                   });
                   console.log(`Successfully published: ${response.data.url}`);
-                  return { success: true, url: response.data.url, title: attributes.title, file };
+                  return { success: true, url: response.data.url, title: updatedAttributes.title, file };
                 } catch (error) {
                   console.error(`Error publishing article: ${error.message}`);
                   if (error.response) {
@@ -159,7 +246,7 @@ jobs:
                 }
               } else {
                 console.log('Article would be published with title:', article.article.title);
-                return { success: true, dryRun: true, title: attributes.title, file };
+                return { success: true, dryRun: true, title: updatedAttributes.title, file };
               }
             } catch (error) {
               console.error(`Error processing file ${file}: ${error.message}`);
