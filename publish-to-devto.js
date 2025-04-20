@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 
+require('dotenv').config();
+
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const fm = require('front-matter');
+const FormData = require('form-data');
 
 // Check if API key is provided
 const apiKey = process.env.DEVTO_API_KEY;
@@ -49,17 +52,48 @@ function findMarkdownFiles(dir) {
   return results;
 }
 
+// Upload local assets images to dev.to and update markdown references
+async function uploadImagesForArticle(filePath, markdown) {
+  const dir = path.dirname(filePath);
+  const assetsDir = path.join(dir, 'assets');
+  if (!fs.existsSync(assetsDir)) return markdown;
+  let updated = markdown;
+  const regex = /!\[(.*?)\]\((?:\.\/)?assets\/([^\)]+)\)/g;
+  let match;
+  while ((match = regex.exec(markdown)) !== null) {
+    const alt = match[1];
+    const imgName = match[2];
+    const fullPath = path.join(assetsDir, imgName);
+    if (fs.existsSync(fullPath)) {
+      const form = new FormData();
+      form.append('image', fs.createReadStream(fullPath));
+      const res = await axios.post('https://dev.to/api/images', form, {
+        headers: { 'api-key': apiKey, ...form.getHeaders() }
+      });
+      const url = res.data.image[0];
+      updated = updated.replace(match[0], `![${alt}](${url})`);
+    }
+  }
+  return updated;
+}
+
 async function publishArticle(file) {
   try {
-    const content = fs.readFileSync(file, 'utf8');
+    let content = fs.readFileSync(file, 'utf8');
+    content = await uploadImagesForArticle(file, content);
     const { attributes, body } = fm(content);
-    
+
+    // Normalize tags: support both YAML array and comma-separated string
+    const tags = Array.isArray(attributes.tags)
+      ? attributes.tags
+      : (attributes.tags ? attributes.tags.split(',').map(tag => tag.trim()) : []);
+
     const article = {
       article: {
         title: attributes.title,
         published: attributes.published,
         body_markdown: content,
-        tags: attributes.tags ? attributes.tags.split(',').map(tag => tag.trim()) : [],
+        tags: tags,
       }
     };
     
