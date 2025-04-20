@@ -57,8 +57,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Upload local assets images to dev.to and update markdown references
 async function uploadImagesForArticle(filePath, markdown) {
+  console.log(`DEBUG: Inside uploadImagesForArticle - dryRun is: ${dryRun}`); // Add diagnostic log
   // Skip image uploads during dry run
-  if (dryRun) return markdown;
+  if (dryRun) {
+    console.log("DEBUG: Skipping image uploads due to dryRun."); // Add confirmation log
+    return markdown;
+  }
   const dir = path.dirname(filePath);
   const assetsDir = path.join(dir, 'assets');
   if (!fs.existsSync(assetsDir)) return markdown;
