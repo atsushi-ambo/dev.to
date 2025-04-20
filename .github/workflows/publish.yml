@@ -35,6 +35,13 @@ jobs:
       - name: Install minimal dependencies
         run: npm install --no-save axios front-matter
 
+      - name: Install ImageMagick
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+
+      - name: Resize all images in assets folders to max 4096x4096
+        run: |
+          find blog-posts -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.gif' \) -exec mogrify -resize '4096x4096>' {} +
+
       - name: Create uploading script
         run: |
           cat > publish.js << 'EOL'
