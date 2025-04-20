@@ -52,6 +52,9 @@ function findMarkdownFiles(dir) {
   return results;
 }
 
+// Helper function to introduce a delay
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 // Upload local assets images to dev.to and update markdown references
 async function uploadImagesForArticle(filePath, markdown) {
   // Skip image uploads during dry run
@@ -77,6 +80,10 @@ async function uploadImagesForArticle(filePath, markdown) {
         updated = updated.replace(match[0], `![${alt}](${url})`);
       } catch (err) {
         console.error(`Image upload failed for ${fullPath}: ${err.message}`);
+        if (err.response) {
+          console.error(`Status: ${err.response.status}, Data: ${JSON.stringify(err.response.data)}`);
+        }
+        await delay(1000); // Also wait after a failure
       }
     }
   }
@@ -87,6 +94,8 @@ async function publishArticle(file) {
   try {
     let content = fs.readFileSync(file, 'utf8');
     content = await uploadImagesForArticle(file, content);
+    // Add a small delay after image uploads before publishing the article
+    await delay(1000);
     const { attributes, body } = fm(content);
 
     // Normalize tags: support both YAML array and comma-separated string
