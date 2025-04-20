@@ -54,6 +54,8 @@ function findMarkdownFiles(dir) {
 
 // Upload local assets images to dev.to and update markdown references
 async function uploadImagesForArticle(filePath, markdown) {
+  // Skip image uploads during dry run
+  if (dryRun) return markdown;
   const dir = path.dirname(filePath);
   const assetsDir = path.join(dir, 'assets');
   if (!fs.existsSync(assetsDir)) return markdown;
@@ -66,12 +68,16 @@ async function uploadImagesForArticle(filePath, markdown) {
     const fullPath = path.join(assetsDir, imgName);
     if (fs.existsSync(fullPath)) {
       const form = new FormData();
-      form.append('image', fs.createReadStream(fullPath));
-      const res = await axios.post('https://dev.to/api/images', form, {
-        headers: { 'api-key': apiKey, ...form.getHeaders() }
-      });
-      const url = res.data.image[0];
-      updated = updated.replace(match[0], `![${alt}](${url})`);
+      form.append('image', fs.createReadStream(fullPath));  // Use 'image' per DEV.TO API docs
+      try {
+        const res = await axios.post('https://dev.to/api/images', form, {
+          headers: { 'api-key': apiKey, ...form.getHeaders() }
+        });
+        const url = Array.isArray(res.data.image) ? res.data.image[0] : res.data.image;
+        updated = updated.replace(match[0], `![${alt}](${url})`);
+      } catch (err) {
+        console.error(`Image upload failed for ${fullPath}: ${err.message}`);
+      }
     }
   }
   return updated;
