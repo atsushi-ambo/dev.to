@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 5  # Set a reasonable timeout
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1  # Shallow clone for speed
 
