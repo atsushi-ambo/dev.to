@@ -53,7 +53,7 @@ jobs:
           else
             git diff --name-only "$BEFORE" "$AFTER" -- blog-posts
           fi | awk -F/ 'NF >= 3 { print $1 "/" $2 "/article.md" }' | sort -u \
-            | while read -r f; do [ -f "$f" ] && echo "$f"; done > "$RUNNER_TEMP/changed-articles.txt"
+            | while read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done > "$RUNNER_TEMP/changed-articles.txt"
           echo "Changed articles:"; cat "$RUNNER_TEMP/changed-articles.txt"
 
       - name: Install minimal dependencies
