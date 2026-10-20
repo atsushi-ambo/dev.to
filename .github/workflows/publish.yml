@@ -212,7 +212,11 @@ jobs:
               const { attributes: updatedAttributes, body } = fm(updatedContent);
               
               // Check tag count and limit to 4 if needed
-              let tags = updatedAttributes.tags ? updatedAttributes.tags.split(',').map(tag => tag.trim()) : [];
+              // Front matter may give tags as a YAML list or a comma-separated string
+              const rawTags = updatedAttributes.tags || [];
+              let tags = (Array.isArray(rawTags) ? rawTags : String(rawTags).split(','))
+                .map(tag => String(tag).trim())
+                .filter(Boolean);
               if (tags.length > 4) {
                 console.log(`Warning: Limiting tags to 4 (was ${tags.length})`);
                 tags = tags.slice(0, 4);
@@ -331,6 +335,12 @@ jobs:
                 results.successful.forEach(item => {
                   console.log(`- ${item.file}${item.dryRun ? ' (DRY RUN)' : ''}`);
                 });
+              }
+
+              if (results.failed.length > 0) {
+                console.error('\nFailed:');
+                results.failed.forEach(item => console.error(`- ${item.file}: ${item.error}`));
+                process.exitCode = 1;
               }
             } catch (error) {
               console.error(`Error: ${error.message}`);
