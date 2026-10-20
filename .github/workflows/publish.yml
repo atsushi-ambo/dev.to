@@ -3,9 +3,9 @@ name: Publish to DEV.TO
 on:
   push:
     branches:
-      - main
+      - atsushi-ambo/first-commit
     paths:
-      - 'blog-posts/**/*.md'  # Only trigger on markdown file changes
+      - 'blog-posts/**'  # Articles and their assets
   workflow_dispatch:
     inputs:
       dry_run:
@@ -20,6 +20,11 @@ on:
 permissions:
   contents: read
 
+# One publish at a time, so two pushes cannot create the same article twice.
+concurrency:
+  group: devto-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -28,13 +33,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 1  # Shallow clone for speed
+          fetch-depth: 0  # Needed to diff the pushed range
           persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+
+      - name: Find changed articles
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          # A push publishes only the articles whose folder changed in it.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            git diff-tree --no-commit-id --name-only -r "$AFTER" -- blog-posts
+          else
+            git diff --name-only "$BEFORE" "$AFTER" -- blog-posts
+          fi | awk -F/ 'NF >= 3 { print $1 "/" $2 "/article.md" }' | sort -u \
+            | while read -r f; do if [ -f "$f" ]; then echo "$f"; fi; done > "$RUNNER_TEMP/changed-articles.txt"
+          echo "Changed articles:"; cat "$RUNNER_TEMP/changed-articles.txt"
 
       - name: Install minimal dependencies
         run: npm install --no-save axios front-matter
@@ -67,6 +87,22 @@ jobs:
           // Parse command line arguments
           const dryRun = process.env.DRY_RUN === 'true';
           const specificFile = process.env.FILE_PATH || null;
+          const changedListFile = process.env.CHANGED_ARTICLES_FILE || null;
+          const apiHeaders = { 'api-key': apiKey, 'Content-Type': 'application/json' };
+
+          // Existing articles by title, so a re-run updates them instead of posting duplicates
+          async function fetchExistingArticles() {
+            const byTitle = new Map();
+            for (let page = 1; ; page++) {
+              const { data } = await axios.get('https://dev.to/api/articles/me/all', {
+                headers: apiHeaders,
+                params: { page, per_page: 1000 }
+              });
+              data.forEach(a => { if (!byTitle.has(a.title)) byTitle.set(a.title, a.id); });
+              if (data.length < 1000) return byTitle;
+            }
+          }
+          let existingArticles = new Map();
           const folder = 'blog-posts';
 
           // Find all article.md files
@@ -193,6 +229,7 @@ jobs:
           }
 
           async function publishArticle(file) {
+            let existingId;
             try {
               console.log(`Processing file: ${file}`);
               const rawContent = fs.readFileSync(file, 'utf8');
@@ -238,17 +275,16 @@ jobs:
               if (updatedAttributes.canonical_url) article.article.canonical_url = updatedAttributes.canonical_url;
               if (updatedAttributes.series) article.article.series = updatedAttributes.series;
               
-              console.log(`${dryRun ? '[DRY RUN] ' : ''}Publishing article: ${updatedAttributes.title}`);
+              existingId = existingArticles.get(updatedAttributes.title);
+              const action = existingId ? `Updating article #${existingId}` : 'Creating article';
+              console.log(`${dryRun ? '[DRY RUN] ' : ''}${action}: ${updatedAttributes.title}`);
               console.log(`Tags: ${tags.join(', ')}`);
               
               if (!dryRun) {
                 try {
-                  const response = await axios.post('https://dev.to/api/articles', article, {
-                    headers: {
-                      'api-key': apiKey,
-                      'Content-Type': 'application/json'
-                    }
-                  });
+                  const response = existingId
+                    ? await axios.put(`https://dev.to/api/articles/${existingId}`, article, { headers: apiHeaders })
+                    : await axios.post('https://dev.to/api/articles', article, { headers: apiHeaders });
                   console.log(`Successfully published: ${response.data.url}`);
                   return { success: true, url: response.data.url, title: updatedAttributes.title, file };
                 } catch (error) {
@@ -287,6 +323,9 @@ jobs:
                 
                 files = [specificFile];
                 console.log(`Publishing single file: ${specificFile}`);
+              } else if (changedListFile) {
+                files = fs.readFileSync(changedListFile, 'utf8').split('\n').filter(Boolean);
+                console.log(`Found ${files.length} changed article.md files to process`);
               } else {
                 // Find article.md files in the folder
                 console.log(`Looking for article.md files in ${folder}...`);
@@ -299,6 +338,9 @@ jobs:
                 return;
               }
               
+              existingArticles = await fetchExistingArticles();
+              console.log(`Found ${existingArticles.size} existing articles on DEV.TO`);
+
               const results = { successful: [], failed: [], skipped: [] };
               
               for (const file of files) {
@@ -356,4 +398,5 @@ jobs:
           DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           FILE_PATH: ${{ github.event.inputs.file_path }}
+          CHANGED_ARTICLES_FILE: ${{ github.event_name == 'push' && format('{0}/changed-articles.txt', runner.temp) || '' }}
         run: node publish.js
