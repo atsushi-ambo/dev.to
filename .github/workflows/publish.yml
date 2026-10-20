@@ -17,20 +17,24 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 5  # Set a reasonable timeout
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1  # Shallow clone for speed
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '16'
+          node-version: '24'
 
       - name: Install minimal dependencies
         run: npm install --no-save axios front-matter
